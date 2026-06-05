@@ -1,0 +1,374 @@
+@page "/release-plan/new"
+@page "/release-plan/{Id:int}"
+@rendermode InteractiveServer
+@using ReleasePlanGenerator.Web.Repositories
+@inject IReleasePlanRepository ReleasePlanRepo
+@inject IReleaseTemplateRepository TemplateRepo
+@inject ISystemRepository SystemRepo
+@inject IServerRepository ServerRepo
+@inject IDatabaseRepository DatabaseRepo
+@inject IMarkdownGenerationService MarkdownSvc
+@inject IPdfGenerationService PdfSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>@(Id.HasValue ? "Edit" : "New") Release Plan</PageTitle>
+
+<h1>@(Id.HasValue ? "Edit" : "New") Release Plan</h1>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+<EditForm Model="_plan" OnValidSubmit="Save">
+    <DataAnnotationsValidator />
+
+    <!-- Release Information -->
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Release Information</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Title <span class="text-danger">*</span></label>
+                    <input class="form-control" @bind="_plan.Title" placeholder="e.g. Sprint 42 Release" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Release Date <span class="text-danger">*</span></label>
+                    <input type="date" class="form-control" @bind="_plan.ReleaseDate" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Environment <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="_plan.Environment">
+                        <option value="">— Select —</option>
+                        <option>Development</option>
+                        <option>QA</option>
+                        <option>UAT</option>
+                        <option>Production</option>
+                        <option>Other</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Created By <span class="text-danger">*</span></label>
+                    <input class="form-control" @bind="_plan.CreatedBy" placeholder="Your name" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Template</label>
+                    <select class="form-select" @bind="_plan.TemplateId">
+                        <option value="">— Default —</option>
+                        @foreach (var t in _templates)
+                        {
+                            <option value="@t.Id">@t.Name@(t.IsDefault ? " (Default)" : "")</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tickets -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold">Tickets <span class="text-danger">*</span></span>
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddTicket">+ Add Ticket</button>
+        </div>
+        <div class="card-body">
+            @if (_plan.Tickets.Count == 0)
+            {
+                <p class="text-muted">No tickets added yet.</p>
+            }
+            @for (var i = 0; i < _plan.Tickets.Count; i++)
+            {
+                var idx = i;
+                <TicketEditor Ticket="_plan.Tickets[idx]" Index="idx"
+                              IsLast="idx == _plan.Tickets.Count - 1"
+                              OnRemove="() => RemoveTicket(idx)"
+                              OnMoveUp="() => MoveTicket(idx, -1)"
+                              OnMoveDown="() => MoveTicket(idx, 1)" />
+            }
+        </div>
+    </div>
+
+    <!-- Affected Systems -->
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Affected Systems <span class="text-danger">*</span></div>
+        <div class="card-body">
+            <div class="row g-2">
+                @foreach (var sys in _systems)
+                {
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox"
+                                   id="sys_@sys.Id"
+                                   checked="@_plan.SelectedSystemIds.Contains(sys.Id)"
+                                   @onchange="e => ToggleSelection(_plan.SelectedSystemIds, sys.Id, (bool)e.Value!)" />
+                            <label class="form-check-label" for="sys_@sys.Id">@sys.Name</label>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Servers -->
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Servers</div>
+        <div class="card-body">
+            @if (_servers.Count == 0)
+            {
+                <p class="text-muted">No servers configured. <a href="servers">Manage Servers</a></p>
+            }
+            else
+            {
+                <div class="row g-2">
+                    @foreach (var srv in _servers)
+                    {
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       id="srv_@srv.Id"
+                                       checked="@_plan.SelectedServerIds.Contains(srv.Id)"
+                                       @onchange="e => ToggleSelection(_plan.SelectedServerIds, srv.Id, (bool)e.Value!)" />
+                                <label class="form-check-label" for="srv_@srv.Id">
+                                    @srv.Name <span class="text-muted small">(@srv.Environment – @srv.ServerType)</span>
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Databases -->
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Databases</div>
+        <div class="card-body">
+            @if (_databases.Count == 0)
+            {
+                <p class="text-muted">No databases configured. <a href="databases">Manage Databases</a></p>
+            }
+            else
+            {
+                <div class="row g-2">
+                    @foreach (var db in _databases)
+                    {
+                        <div class="col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox"
+                                       id="db_@db.Id"
+                                       checked="@_plan.SelectedDatabaseIds.Contains(db.Id)"
+                                       @onchange="e => ToggleSelection(_plan.SelectedDatabaseIds, db.Id, (bool)e.Value!)" />
+                                <label class="form-check-label" for="db_@db.Id">
+                                    @db.Name <span class="text-muted small">(@db.SqlServerInstance)</span>
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- SQL Scripts -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold">SQL Scripts</span>
+            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddScript">+ Add Script</button>
+        </div>
+        <div class="card-body">
+            @foreach (var script in _plan.SqlScripts)
+            {
+                <SqlScriptEditor Script="script" Databases="_databases"
+                                 OnRemove="() => _plan.SqlScripts.Remove(script)" />
+            }
+            @if (_plan.SqlScripts.Count == 0)
+            {
+                <p class="text-muted">No SQL scripts added.</p>
+            }
+        </div>
+    </div>
+
+    <!-- Steps -->
+    <div class="card mb-4">
+        <div class="card-header fw-bold">Deployment / Validation / Rollback Steps</div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Deployment Steps <span class="text-muted small">(one per line)</span></label>
+                <textarea class="form-control" rows="4" @bind="_plan.DeploymentSteps"
+                          placeholder="Step 1&#10;Step 2&#10;Step 3"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Validation Steps</label>
+                <textarea class="form-control" rows="4" @bind="_plan.ValidationSteps"
+                          placeholder="Validation step 1&#10;Validation step 2"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Rollback Steps</label>
+                <textarea class="form-control" rows="4" @bind="_plan.RollbackSteps"
+                          placeholder="Rollback step 1&#10;Rollback step 2"></textarea>
+            </div>
+            <div>
+                <label class="form-label">Notes</label>
+                <textarea class="form-control" rows="3" @bind="_plan.Notes"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Markdown Preview -->
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-bold">Markdown Preview</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="GeneratePreview">Generate Preview</button>
+        </div>
+        <div class="card-body">
+            <MarkdownPreview Markdown="_generatedMarkdown" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    <!-- Export Actions -->
+    <div class="d-flex gap-2 flex-wrap mb-4">
+        <button type="submit" class="btn btn-primary">Save Release Plan</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="GeneratePreview">Generate Preview</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="CopyMarkdown"
+                disabled="@string.IsNullOrWhiteSpace(_generatedMarkdown)">Copy Markdown</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="DownloadMarkdown"
+                disabled="@string.IsNullOrWhiteSpace(_generatedMarkdown)">Download .md</button>
+        <button type="button" class="btn btn-outline-secondary" @onclick="DownloadPdf"
+                disabled="@string.IsNullOrWhiteSpace(_generatedMarkdown)">Download PDF</button>
+    </div>
+</EditForm>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private ReleasePlan _plan = new() { ReleaseDate = DateTime.Today };
+    private List<ReleaseTemplate> _templates = [];
+    private List<SystemEntry> _systems = [];
+    private List<ServerEntry> _servers = [];
+    private List<DatabaseEntry> _databases = [];
+    private string? _generatedMarkdown;
+    private string? _error;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _templates = (await TemplateRepo.GetActiveAsync()).ToList();
+        _systems = (await SystemRepo.GetActiveAsync()).ToList();
+        _servers = (await ServerRepo.GetActiveAsync()).ToList();
+        _databases = (await DatabaseRepo.GetActiveAsync()).ToList();
+
+        if (Id.HasValue)
+        {
+            var existing = await ReleasePlanRepo.GetByIdAsync(Id.Value);
+            if (existing is not null) _plan = existing;
+        }
+        else
+        {
+            var defaultTemplate = await TemplateRepo.GetDefaultAsync();
+            if (defaultTemplate is not null) _plan.TemplateId = defaultTemplate.Id;
+        }
+
+        _loading = false;
+    }
+
+    private void AddTicket()
+    {
+        _plan.Tickets.Add(new ReleasePlanTicket { SortOrder = _plan.Tickets.Count });
+    }
+
+    private void RemoveTicket(int idx)
+    {
+        _plan.Tickets.RemoveAt(idx);
+        for (var i = 0; i < _plan.Tickets.Count; i++) _plan.Tickets[i].SortOrder = i;
+    }
+
+    private void MoveTicket(int idx, int direction)
+    {
+        var newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= _plan.Tickets.Count) return;
+        (_plan.Tickets[idx], _plan.Tickets[newIdx]) = (_plan.Tickets[newIdx], _plan.Tickets[idx]);
+        for (var i = 0; i < _plan.Tickets.Count; i++) _plan.Tickets[i].SortOrder = i;
+    }
+
+    private void AddScript()
+    {
+        _plan.SqlScripts.Add(new SqlScript { ExecutionOrder = _plan.SqlScripts.Count + 1, IsRequired = true });
+    }
+
+    private static void ToggleSelection(List<int> list, int id, bool add)
+    {
+        if (add) { if (!list.Contains(id)) list.Add(id); }
+        else list.Remove(id);
+    }
+
+    private async Task GeneratePreview()
+    {
+        try
+        {
+            _error = null;
+            _generatedMarkdown = await MarkdownSvc.GenerateAsync(_plan);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Preview generation failed: {ex.Message}";
+        }
+    }
+
+    private async Task Save()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_plan.Title)) { _error = "Title is required."; return; }
+        if (string.IsNullOrWhiteSpace(_plan.Environment)) { _error = "Environment is required."; return; }
+        if (_plan.Tickets.Count == 0) { _error = "At least one ticket is required."; return; }
+        if (_plan.SelectedSystemIds.Count == 0) { _error = "At least one system must be selected."; return; }
+
+        if (string.IsNullOrWhiteSpace(_generatedMarkdown))
+            _generatedMarkdown = await MarkdownSvc.GenerateAsync(_plan);
+
+        _plan.MarkdownOutput = _generatedMarkdown;
+
+        await ReleasePlanRepo.SaveWithChildrenAsync(_plan);
+        Nav.NavigateTo("/");
+    }
+
+    private async Task CopyMarkdown()
+    {
+        if (!string.IsNullOrWhiteSpace(_generatedMarkdown))
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedMarkdown);
+    }
+
+    private async Task DownloadMarkdown()
+    {
+        if (string.IsNullOrWhiteSpace(_generatedMarkdown)) return;
+        var fileName = BuildFileName("md");
+        var bytes = System.Text.Encoding.UTF8.GetBytes(_generatedMarkdown);
+        await DownloadFile(fileName, "text/markdown", bytes);
+    }
+
+    private async Task DownloadPdf()
+    {
+        if (string.IsNullOrWhiteSpace(_generatedMarkdown)) return;
+        var bytes = await PdfSvc.GenerateFromMarkdownAsync(_generatedMarkdown, _plan.Title);
+        await DownloadFile(BuildFileName("pdf"), "application/pdf", bytes);
+    }
+
+    private string BuildFileName(string ext)
+    {
+        var tickets = string.Join("-", _plan.Tickets.Select(t => t.TicketNumber).Take(3));
+        return $"ReleasePlan_{_plan.Environment}_{_plan.ReleaseDate:yyyy-MM-dd}_{tickets}.{ext}";
+    }
+
+    private async Task DownloadFile(string fileName, string contentType, byte[] bytes)
+    {
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, contentType, base64);
+    }
+}

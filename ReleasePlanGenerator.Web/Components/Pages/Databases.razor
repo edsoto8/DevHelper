@@ -1,0 +1,144 @@
+@page "/databases"
+@rendermode InteractiveServer
+@using ReleasePlanGenerator.Web.Repositories
+@inject IDatabaseRepository DatabaseRepo
+@inject ISystemRepository SystemRepo
+
+<PageTitle>Databases</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Databases</h1>
+    <button class="btn btn-primary" @onclick="NewDatabase">+ Add Database</button>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <table class="table table-hover">
+        <thead><tr><th>Name</th><th>SQL Server Instance</th><th>Environment</th><th>System</th><th>Active</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var d in _databases)
+            {
+                <tr>
+                    <td>@d.Name</td>
+                    <td>@d.SqlServerInstance</td>
+                    <td>@d.Environment</td>
+                    <td>@(_systems.FirstOrDefault(s => s.Id == d.SystemEntryId)?.Name ?? "—")</td>
+                    <td>@(d.IsActive ? "Active" : "Inactive")</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(d)">Edit</button>
+                        @if (d.IsActive)
+                        {
+                            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => Deactivate(d.Id)">Deactivate</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_editing is not null)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(_editing.Id == 0 ? "Add" : "Edit") Database</h5>
+                    <button type="button" class="btn-close" @onclick="CancelEdit"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label">Database Name <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="_editing.Name" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">SQL Server Instance <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="_editing.SqlServerInstance" placeholder="e.g. MY-SERVER\SQLEXPRESS" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Environment</label>
+                            <select class="form-select" @bind="_editing.Environment">
+                                <option value="">— Select —</option>
+                                <option>Development</option><option>QA</option>
+                                <option>UAT</option><option>Production</option><option>Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Related System</label>
+                            <select class="form-select" @bind="_editing.SystemEntryId">
+                                <option value="">— None —</option>
+                                @foreach (var sys in _systems)
+                                {
+                                    <option value="@sys.Id">@sys.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" rows="2" @bind="_editing.Notes"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_editing.IsActive" id="dbActive" />
+                                <label class="form-check-label" for="dbActive">Active</label>
+                            </div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_formError))
+                    {
+                        <div class="alert alert-danger mt-2">@_formError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                    <button class="btn btn-primary" @onclick="SaveDatabase">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<DatabaseEntry> _databases = [];
+    private List<SystemEntry> _systems = [];
+    private bool _loading = true;
+    private DatabaseEntry? _editing;
+    private string? _formError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _databases = (await DatabaseRepo.GetAllAsync()).ToList();
+        _systems = (await SystemRepo.GetActiveAsync()).ToList();
+        _loading = false;
+    }
+
+    private void NewDatabase() => _editing = new DatabaseEntry { IsActive = true };
+    private void Edit(DatabaseEntry d) => _editing = new DatabaseEntry
+    {
+        Id = d.Id, Name = d.Name, SqlServerInstance = d.SqlServerInstance, Environment = d.Environment,
+        SystemEntryId = d.SystemEntryId, Notes = d.Notes, IsActive = d.IsActive
+    };
+    private void CancelEdit() { _editing = null; _formError = null; }
+
+    private async Task SaveDatabase()
+    {
+        if (_editing is null) return;
+        if (string.IsNullOrWhiteSpace(_editing.Name)) { _formError = "Name is required."; return; }
+        if (string.IsNullOrWhiteSpace(_editing.SqlServerInstance)) { _formError = "SQL Server Instance is required."; return; }
+        if (_editing.Id == 0) await DatabaseRepo.CreateAsync(_editing);
+        else await DatabaseRepo.UpdateAsync(_editing);
+        _editing = null; _formError = null;
+        _databases = (await DatabaseRepo.GetAllAsync()).ToList();
+    }
+
+    private async Task Deactivate(int id)
+    {
+        await DatabaseRepo.DeactivateAsync(id);
+        _databases = (await DatabaseRepo.GetAllAsync()).ToList();
+    }
+}

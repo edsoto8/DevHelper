@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Build a .NET-based Blazor web application that helps users generate structured software release plans. The app should support multiple release plan templates, allow users to add one or more tickets to a release plan, maintain systems, servers, and databases, and generate release plans in Markdown and PDF formats.
+Build a .NET 10-based Blazor web application that helps users generate structured software release plans. The app should support multiple release plan templates, allow users to add one or more tickets to a release plan, maintain systems, servers, and databases, and generate release plans in Markdown and PDF formats.
 
 The application should use SQLite as its internal application database for storing release plans, templates, systems, servers, databases, SQL scripts, settings, and user-entered data.
 
@@ -46,7 +46,7 @@ The application should allow users to:
 
 ## 3.2 Backend / Application Layer
 
-* .NET
+* .NET 10
 * ASP.NET Core
 * C#
 * Service-based application architecture
@@ -1258,7 +1258,7 @@ SQL script requirements:
 
 ### .NET / Blazor App
 
-* The application is built using .NET and Blazor.
+* The application is built using .NET 10 and Blazor.
 * The app runs locally or on an internal server.
 * The app uses Razor components for the UI.
 

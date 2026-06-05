@@ -1,0 +1,114 @@
+@page "/"
+@rendermode InteractiveServer
+@using ReleasePlanGenerator.Web.Repositories
+@inject IReleasePlanRepository ReleasePlanRepo
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard – Release Plan Generator</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Release Plans</h1>
+    <a href="release-plan/new" class="btn btn-primary">+ New Release Plan</a>
+</div>
+
+<div class="row mb-3 g-2">
+    <div class="col-md-4">
+        <input class="form-control" placeholder="Search by title…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" @bind="_filterEnv">
+            <option value="">All Environments</option>
+            <option>Development</option>
+            <option>QA</option>
+            <option>UAT</option>
+            <option>Production</option>
+            <option>Other</option>
+        </select>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else if (!Filtered.Any())
+{
+    <p class="text-muted">No release plans found. <a href="release-plan/new">Create one.</a></p>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Environment</th>
+                <th>Release Date</th>
+                <th>Created By</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var plan in Filtered)
+            {
+                <tr>
+                    <td>@plan.Title</td>
+                    <td><span class="badge bg-secondary">@plan.Environment</span></td>
+                    <td>@plan.ReleaseDate.ToString("yyyy-MM-dd")</td>
+                    <td>@plan.CreatedBy</td>
+                    <td>
+                        <a href="release-plan/@plan.Id" class="btn btn-sm btn-outline-primary">Open</a>
+                        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => ConfirmDelete(plan.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_deleteId.HasValue)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">Confirm Delete</h5></div>
+                <div class="modal-body"><p>Delete this release plan? This cannot be undone.</p></div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CancelDelete">Cancel</button>
+                    <button class="btn btn-danger" @onclick="DeletePlan">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<ReleasePlan> _plans = [];
+    private bool _loading = true;
+    private string _search = string.Empty;
+    private string _filterEnv = string.Empty;
+    private int? _deleteId;
+
+    private IEnumerable<ReleasePlan> Filtered => _plans
+        .Where(p => (string.IsNullOrWhiteSpace(_filterEnv) || p.Environment == _filterEnv)
+                 && (string.IsNullOrWhiteSpace(_search) || p.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _plans = (await ReleasePlanRepo.GetAllAsync()).ToList();
+        _loading = false;
+    }
+
+    private void ConfirmDelete(int id) => _deleteId = id;
+    private void CancelDelete() => _deleteId = null;
+
+    private async Task DeletePlan()
+    {
+        if (_deleteId.HasValue)
+        {
+            await ReleasePlanRepo.DeleteAsync(_deleteId.Value);
+            _plans.RemoveAll(p => p.Id == _deleteId.Value);
+            _deleteId = null;
+        }
+    }
+}

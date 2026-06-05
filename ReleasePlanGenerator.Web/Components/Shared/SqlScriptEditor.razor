@@ -1,0 +1,44 @@
+@rendermode InteractiveServer
+
+<div class="card mb-2">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-1">
+                <label class="form-label">Order</label>
+                <input type="number" class="form-control" @bind="Script.ExecutionOrder" min="1" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Database</label>
+                <select class="form-select" @bind="Script.DatabaseEntryId">
+                    <option value="">— Select —</option>
+                    @foreach (var db in Databases)
+                    {
+                        <option value="@db.Id">@db.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Script Name <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="Script.ScriptName" placeholder="e.g. 001_AddColumn.sql" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Required</label>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="checkbox" @bind="Script.IsRequired" />
+                    <label class="form-check-label">Yes</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button class="btn btn-sm btn-outline-danger" @onclick="Remove">✕</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SqlScript Script { get; set; } = default!;
+    [Parameter] public IEnumerable<DatabaseEntry> Databases { get; set; } = [];
+    [Parameter] public EventCallback OnRemove { get; set; }
+
+    private Task Remove() => OnRemove.InvokeAsync();
+}

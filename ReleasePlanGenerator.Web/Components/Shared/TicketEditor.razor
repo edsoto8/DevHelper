@@ -1,0 +1,41 @@
+@rendermode InteractiveServer
+
+<div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Ticket #@(Index + 1)</span>
+        <div>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="MoveUp" disabled="@(Index == 0)">↑</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" @onclick="MoveDown" disabled="@IsLast">↓</button>
+            <button class="btn btn-sm btn-outline-danger ms-1" @onclick="Remove">✕</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3">
+                <label class="form-label">Ticket Number <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="Ticket.TicketNumber" placeholder="e.g. F3121" />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Ticket Name <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="Ticket.TicketName" placeholder="Short title" />
+            </div>
+        </div>
+        <div class="mt-2">
+            <label class="form-label">Summary / Description</label>
+            <textarea class="form-control" rows="3" @bind="Ticket.TicketSummary" placeholder="Brief description…"></textarea>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ReleasePlanTicket Ticket { get; set; } = default!;
+    [Parameter, EditorRequired] public int Index { get; set; }
+    [Parameter] public bool IsLast { get; set; }
+    [Parameter] public EventCallback OnRemove { get; set; }
+    [Parameter] public EventCallback OnMoveUp { get; set; }
+    [Parameter] public EventCallback OnMoveDown { get; set; }
+
+    private Task Remove() => OnRemove.InvokeAsync();
+    private Task MoveUp() => OnMoveUp.InvokeAsync();
+    private Task MoveDown() => OnMoveDown.InvokeAsync();
+}

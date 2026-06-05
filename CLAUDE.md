@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Layer | Technology |
 |---|---|
 | Frontend | Blazor / Razor Components |
+| Runtime | .NET 10 |
 | Backend | ASP.NET Core, C# |
 | App database | SQLite via Dapper + `Microsoft.Data.Sqlite` |
 | External ticket lookup | SQL Server via `Microsoft.Data.SqlClient` (future, optional) |
@@ -110,7 +111,7 @@ Application settings (including the optional SQL Server connection string) are s
 
 ## Key Rules
 
-- use dotnet commands to scaffold the projects and then edit  and add code files as needed
+- Target `net10.0` for all projects. Use `dotnet` commands to scaffold, then edit/add files as needed.
 - All SQL must be parameterized — no string concatenation with user input.
 - Log all database errors, release plan operations, PDF/Markdown generation failures, and SQL Server connection test results via Serilog.
 - The SQL Server connection string is optional. If absent or unreachable, fall back to manual ticket entry gracefully without blocking the user.
