@@ -1,10 +1,10 @@
 INSERT OR IGNORE INTO SystemEntries (Name, Description, IsActive, CreatedAt, UpdatedAt)
 VALUES
-    ('CashTrackNet',              'CashTrackNet system',               1, datetime('now'), datetime('now')),
-    ('CashTrackSettlement',       'CashTrackSettlement system',        1, datetime('now'), datetime('now')),
-    ('Recon Pro',                 'Recon Pro system',                  1, datetime('now'), datetime('now')),
-    ('Cash Track Import Service', 'Cash Track Import Service',         1, datetime('now'), datetime('now')),
-    ('Other / Free Form',         'Custom or free-form system entry',  1, datetime('now'), datetime('now'));
+    ('Web Application',     'Front-end web application',            1, datetime('now'), datetime('now')),
+    ('API Service',         'Back-end API service',                 1, datetime('now'), datetime('now')),
+    ('Background Service',  'Background / worker service',          1, datetime('now'), datetime('now')),
+    ('Database',            'Relational database',                  1, datetime('now'), datetime('now')),
+    ('Other / Free Form',   'Custom or free-form system entry',     1, datetime('now'), datetime('now'));
 
 INSERT OR IGNORE INTO ReleaseTemplates (Name, Description, MarkdownTemplate, IsDefault, IsActive, CreatedAt, UpdatedAt)
 VALUES (
@@ -59,7 +59,7 @@ VALUES (
 
 ---
 
-# Cash Track Net Release Plan
+# Deployment
 
 ## Deployment Steps
 

@@ -123,8 +123,4 @@ Application settings (including the optional SQL Server connection string) are s
 
 ## Default Systems (seed data)
 
-- CashTrackNet
-- CashTrackSettlement
-- Recon Pro
-- Cash Track Import Service
-- Other / Free Form
+Configured in `Database/Migrations/002_SeedData.sql`. Edit that file to match your environment before first run.
