@@ -4,7 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Release Plan Generator** — a .NET Blazor web application for generating structured software release plans. Full spec is in `spec.md`.
+**DevHelper** — a .NET Blazor web application that provides developer productivity tools. The first tool is a **Release Plan Generator** for creating structured software release plans. Future tools include a **Test Plan Generator** and others.
+
+The project is currently scaffolded as `ReleasePlanGenerator.*` — these names will become more generic as additional tools are added. Do not rename existing projects without discussion; work within the current structure.
+
+The current spec for the Release Plan Generator is in `spec.md`.
+
+---
+
+## Roadmap
+
+| Tool | Status |
+|---|---|
+| Release Plan Generator | In progress |
+| Test Plan Generator | Planned |
 
 ---
 
@@ -25,8 +38,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ---
 
 ## Commands
-
-Once the project is scaffolded:
 
 ```bash
 # Run the web app
