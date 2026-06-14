@@ -8,8 +8,8 @@
 
 | Tool | Description | Status |
 |---|---|---|
-| Release Plan Generator | Create, manage, and export structured software release plans | v1 |
-| Test Plan Generator | Create, manage, and export structured test plans with test cases and screenshots | v1 |
+| Release Plan Generator | Create, manage, and export structured software release plans | Current build phase |
+| Test Plan Generator | Create, manage, and export structured test plans with test cases and screenshots | Planned after Release Plan |
 
 ---
 
@@ -26,6 +26,32 @@ The application should allow users to:
 7. Attach and display screenshots in test plans.
 8. Configure one or more base URLs for the application under test (used in the Test Plan tool).
 9. Log all application events and errors using Serilog.
+
+---
+
+## 2.1 Implementation Phases
+
+Build the application in focused phases. Do not implement later-phase user workflows until the current phase is complete unless explicitly requested.
+
+### Phase 1 — Release Plan Generator
+
+Deliver the Release Plan Generator end to end:
+
+* Blazor app scaffold and shared layout/navigation
+* SQLite database initialization and migrations
+* Shared systems, servers, databases, templates, and settings infrastructure
+* Release plan create, edit, list, delete, validation, and transactional save
+* Markdown generation, preview, copy, and `.md` download for release plans
+* Optional SQL Server connection string storage and connection test
+* Automated tests covering migrations, repositories, validation, and Markdown generation
+
+### Phase 2 — Release Plan PDF Export
+
+Add PDF export for release plans after Markdown generation is stable.
+
+### Phase 3 — Test Plan Generator
+
+Implement the Test Plan Generator after the Release Plan Generator and shared infrastructure are stable. Section 7 defines the target behavior for this later phase.
 
 ---
 
@@ -71,6 +97,15 @@ SQL Server is an optional future data source for ticket lookup. v1 only stores t
 ### 3.6 Logging
 
 * Serilog with Console and rolling File sinks
+
+### 3.7 PDF Generation
+
+* Markdig for Markdown to HTML conversion
+* PuppeteerSharp for HTML to PDF rendering
+
+### 3.8 Sensitive Settings Protection
+
+* ASP.NET Core Data Protection for encrypting sensitive application settings
 
 ---
 
@@ -135,6 +170,22 @@ Fields:
 
 Users can create, edit, duplicate, deactivate, and set a default template per tool type.
 
+### 5.5 Template Rendering Contract
+
+Templates use exact `{{PlaceholderName}}` tokens. Rendering is case-sensitive.
+
+Rules:
+
+* All supported placeholders for the selected tool type must be replaced during Markdown generation.
+* Unknown placeholders must remain unchanged and generate a warning log entry.
+* Missing optional scalar values render as an empty string.
+* Empty collections render as `None`.
+* Dates render as `yyyy-MM-dd`.
+* Filename dates render as `yyyyMMdd`.
+* Single-line values used in Markdown tables or list items must be escaped for Markdown table separators and line breaks.
+* Long-form fields such as summaries, steps, notes, expected results, and actual results may preserve user-entered Markdown.
+* Collection placeholders render in `SortOrder`, then `Id`, order.
+
 ---
 
 ## 6. Tool 1 — Release Plan Generator
@@ -151,6 +202,7 @@ Users can create, edit, duplicate, deactivate, and set a default template per to
 * Servers (selected from shared list)
 * Databases (selected from shared list)
 * SQL Scripts
+* Backup Steps
 * Deployment Steps
 * Validation Steps
 * Rollback Steps
@@ -180,6 +232,7 @@ The release plan is generated from the selected template with the following plac
 
 | Placeholder | Value |
 |---|---|
+| `{{Title}}` | Release plan title |
 | `{{ReleaseDate}}` | Formatted release date |
 | `{{Environment}}` | Selected environment |
 | `{{CreatedBy}}` | Created by name |
@@ -188,10 +241,20 @@ The release plan is generated from the selected template with the following plac
 | `{{Servers}}` | Selected servers as a bullet list |
 | `{{Databases}}` | Selected databases as a bullet list |
 | `{{SqlScripts}}` | SQL scripts as a Markdown table |
+| `{{BackupSteps}}` | Numbered backup steps |
 | `{{DeploymentSteps}}` | Numbered deployment steps |
 | `{{ValidationSteps}}` | Numbered validation steps |
 | `{{RollbackSteps}}` | Numbered rollback steps |
 | `{{Notes}}` | Additional notes |
+
+Release plan collection rendering:
+
+* `{{Tickets}}`: each ticket renders as `## [TicketNumber] [TicketName]`, followed by its summary when present.
+* `{{Systems}}`: bullet list of selected system names and free-form other system names.
+* `{{Servers}}`: bullet list formatted as `[Server Name] - [Environment] - [Server Type]`.
+* `{{Databases}}`: bullet list formatted as `[Database Name] on [SQL Server Instance]`.
+* `{{SqlScripts}}`: Markdown table with columns `Order`, `Database`, `Script Name`, `Required`, and `Description`.
+* Step placeholders split stored text on new lines and render non-empty lines as a numbered list.
 
 ### 6.5 Default Release Plan Markdown Format
 
@@ -375,22 +438,49 @@ Users upload screenshot files through the UI. Files are saved to the configured 
 
 Screenshots are included in the generated PDF and referenced by file path in the generated Markdown.
 
+### 7.5.1 Screenshot Upload Safety
+
+Screenshot upload handling must follow these rules:
+
+* Allowed extensions: `.png`, `.jpg`, `.jpeg`, `.webp`.
+* Maximum file size: 10 MB per screenshot.
+* Generate server-side stored file names; do not trust uploaded file names as stored file names.
+* Preserve the original file name only as optional display metadata if needed later.
+* Store screenshot paths in SQLite as paths relative to the configured screenshot output directory.
+* Reject absolute paths, `..` path segments, unsupported extensions, and empty files.
+* Ensure the resolved save path remains inside the configured screenshot output directory before writing.
+* Create the configured screenshot output directory if it does not exist.
+* When a screenshot record is deleted, delete its file if it is still inside the configured screenshot output directory.
+* If file deletion fails, keep the database operation successful and log a warning with the screenshot id and path.
+* Do not serve screenshot files from arbitrary filesystem locations.
+
 ### 7.6 Markdown Generation
 
 The test plan is generated from the selected template with the following placeholders:
 
 | Placeholder | Value |
 |---|---|
+| `{{Title}}` | Test plan title |
 | `{{TestDate}}` | Formatted test date |
 | `{{Environment}}` | Selected environment |
 | `{{TestedBy}}` | Tested by name |
 | `{{Status}}` | Overall test plan status |
+| `{{RelatedReleasePlan}}` | Related release plan title or empty string |
 | `{{Tickets}}` | Tickets formatted as Markdown |
 | `{{Systems}}` | Affected systems as a bullet list |
 | `{{Servers}}` | Servers as a bullet list |
 | `{{Databases}}` | Databases as a bullet list |
 | `{{TestCases}}` | All test cases formatted as Markdown |
 | `{{Notes}}` | Additional notes |
+
+Test plan collection rendering:
+
+* `{{Tickets}}`: each ticket renders as `## [TicketNumber] [TicketName]`, followed by its summary when present.
+* `{{Systems}}`: bullet list of selected system names and free-form other system names.
+* `{{Servers}}`: bullet list formatted as `[Server Name] - [Environment] - [Server Type]`.
+* `{{Databases}}`: bullet list formatted as `[Database Name] on [SQL Server Instance]`.
+* `{{TestCases}}`: each test case renders with status, description, pre-conditions, numbered steps, expected result, actual result, screenshots, and notes when present.
+* Test case steps split stored text on new lines and render non-empty lines as a numbered list.
 
 ### 7.7 Default Test Plan Markdown Format
 
@@ -641,6 +731,7 @@ Settings sections:
 | Environment | TEXT NOT NULL |
 | CreatedBy | TEXT NOT NULL |
 | TemplateId | INTEGER FK |
+| BackupSteps | TEXT |
 | DeploymentSteps | TEXT |
 | ValidationSteps | TEXT |
 | RollbackSteps | TEXT |
@@ -679,6 +770,51 @@ Settings sections:
 ### 9.9 ReleasePlanSystems / ReleasePlanServers / ReleasePlanDatabases
 
 Join tables linking a release plan to its selected systems, servers, and databases.
+
+#### ReleasePlanSystems
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| ReleasePlanId | INTEGER NOT NULL FK to `ReleasePlans.Id` ON DELETE CASCADE |
+| SystemEntryId | INTEGER FK to `SystemEntries.Id` |
+| OtherSystemName | TEXT |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Either `SystemEntryId` or `OtherSystemName` is required.
+* `OtherSystemName` is used only for the free-form "Other" system option.
+* Add a unique partial index on `(ReleasePlanId, SystemEntryId)` where `SystemEntryId IS NOT NULL`.
+* Add an index on `ReleasePlanId`.
+
+#### ReleasePlanServers
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| ReleasePlanId | INTEGER NOT NULL FK to `ReleasePlans.Id` ON DELETE CASCADE |
+| ServerEntryId | INTEGER NOT NULL FK to `ServerEntries.Id` |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Add a unique index on `(ReleasePlanId, ServerEntryId)`.
+* Add an index on `ReleasePlanId`.
+
+#### ReleasePlanDatabases
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| ReleasePlanId | INTEGER NOT NULL FK to `ReleasePlans.Id` ON DELETE CASCADE |
+| DatabaseEntryId | INTEGER NOT NULL FK to `DatabaseEntries.Id` |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Add a unique index on `(ReleasePlanId, DatabaseEntryId)`.
+* Add an index on `ReleasePlanId`.
 
 ### 9.10 TestPlans
 
@@ -747,6 +883,51 @@ Join tables linking a release plan to its selected systems, servers, and databas
 
 Join tables linking a test plan to its selected systems, servers, and databases.
 
+#### TestPlanSystems
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| TestPlanId | INTEGER NOT NULL FK to `TestPlans.Id` ON DELETE CASCADE |
+| SystemEntryId | INTEGER FK to `SystemEntries.Id` |
+| OtherSystemName | TEXT |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Either `SystemEntryId` or `OtherSystemName` is required.
+* `OtherSystemName` is used only for the free-form "Other" system option.
+* Add a unique partial index on `(TestPlanId, SystemEntryId)` where `SystemEntryId IS NOT NULL`.
+* Add an index on `TestPlanId`.
+
+#### TestPlanServers
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| TestPlanId | INTEGER NOT NULL FK to `TestPlans.Id` ON DELETE CASCADE |
+| ServerEntryId | INTEGER NOT NULL FK to `ServerEntries.Id` |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Add a unique index on `(TestPlanId, ServerEntryId)`.
+* Add an index on `TestPlanId`.
+
+#### TestPlanDatabases
+
+| Column | Type |
+|---|---|
+| Id | INTEGER PK |
+| TestPlanId | INTEGER NOT NULL FK to `TestPlans.Id` ON DELETE CASCADE |
+| DatabaseEntryId | INTEGER NOT NULL FK to `DatabaseEntries.Id` |
+| SortOrder | INTEGER DEFAULT 0 |
+
+Rules:
+
+* Add a unique index on `(TestPlanId, DatabaseEntryId)`.
+* Add an index on `TestPlanId`.
+
 ### 9.15 ApplicationSettings
 
 | Column | Type |
@@ -759,6 +940,14 @@ Join tables linking a test plan to its selected systems, servers, and databases.
 | UpdatedAt | TEXT NOT NULL |
 
 Example setting keys: `TicketLookupSqlServerConnectionString`, `ScreenshotOutputDirectory`, `DefaultEnvironment`, `LogLevel`.
+
+Sensitive settings must be encrypted before they are persisted. Use ASP.NET Core Data Protection with a stable purpose string of `DevHelper.ApplicationSettings.v1`. Store encrypted values in `SettingValue` with `IsEncrypted = 1`; non-sensitive values use `IsEncrypted = 0`.
+
+Sensitive setting keys:
+
+* `TicketLookupSqlServerConnectionString`
+
+Never log decrypted sensitive values. Connection test logs may include success/failure, SQL Server host name if available, and exception type/message, but must not include credentials or the full connection string.
 
 ### 9.16 ApplicationUrls
 
@@ -829,9 +1018,11 @@ On startup `IDatabaseInitializer`:
 
 1. Generate Markdown.
 2. Convert Markdown to HTML (Markdig).
-3. Convert HTML to PDF (QuestPDF or PuppeteerSharp).
+3. Convert HTML to PDF with PuppeteerSharp.
 4. Embed screenshots where referenced.
 5. Download as `.pdf`.
+
+Use PuppeteerSharp as the only PDF provider unless explicitly requested otherwise. Do not add QuestPDF, DinkToPdf, or another PDF provider for the v1 implementation.
 
 Filename format:
 
@@ -874,6 +1065,12 @@ Log with Serilog at appropriate levels:
 
 ## 15. Project Structure
 
+Use the .NET Blazor Web App template with Interactive Server rendering:
+
+```bash
+dotnet new blazor -n DevHelper.Web -f net10.0 -int Server
+```
+
 ```
 DevHelper/
   DevHelper.Web/
@@ -906,6 +1103,7 @@ DevHelper/
     Data/
     Database/
       Migrations/
+      Scripts/
     wwwroot/
     Program.cs
     appsettings.json
@@ -915,6 +1113,26 @@ DevHelper/
 ---
 
 ## 16. Acceptance Criteria
+
+### Automated Test Expectations
+
+Use `DevHelper.Tests` for automated tests. Prefer xUnit unless an existing test framework is already present.
+
+Required coverage for Phase 1:
+
+* `IDatabaseInitializer` creates the SQLite database, applies migrations in filename order, records migrations, and is idempotent when run more than once.
+* Repository tests use a temporary SQLite database and verify create, read, update, delete, child collection persistence, cascade delete behavior, and transaction rollback for release plan saves.
+* Service validation tests reject missing release date, environment, created by, ticket, selected system, and template.
+* Markdown generation golden tests verify placeholder replacement, date formatting, collection ordering, empty collection rendering, Markdown table escaping, and unknown-placeholder warning behavior.
+* Application settings tests verify sensitive values are encrypted at rest and decrypted only through the settings service.
+* External SQL Server connection tests cover missing connection string and unreachable server without blocking manual ticket entry.
+* A guard test verifies Entity Framework packages and `Microsoft.EntityFrameworkCore` namespaces are not used.
+
+Required coverage for later phases:
+
+* PDF generation has a smoke test that verifies a non-empty PDF is produced from known Markdown/HTML.
+* Screenshot service tests verify allowed extensions, file size limit, generated file names, relative path storage, path traversal rejection, and safe file deletion.
+* Test Plan service tests mirror Release Plan validation, transactional save, and Markdown generation coverage.
 
 ### General
 
