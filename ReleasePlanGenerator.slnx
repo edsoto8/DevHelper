@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="ReleasePlanGenerator.Tests/ReleasePlanGenerator.Tests.csproj" />
-  <Project Path="ReleasePlanGenerator.Web/ReleasePlanGenerator.Web.csproj" />
-</Solution>
