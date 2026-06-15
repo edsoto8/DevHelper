@@ -128,9 +128,9 @@ Generate Markdown first → convert to HTML with Markdig → convert to PDF with
 
 Application settings are stored in an `ApplicationSettings` SQLite table with a `SettingKey` / `SettingValue` / `IsEncrypted` structure. Use ASP.NET Core Data Protection with purpose `DevHelper.ApplicationSettings.v1` for sensitive values. `TicketLookupSqlServerConnectionString` must be encrypted at rest, must have `IsEncrypted = 1`, and must never be written to logs in decrypted form.
 
-### File Uploads
+### Screenshots
 
-Screenshot uploads must validate extension and size, generate server-side file names, store only paths relative to the configured screenshot output directory, reject path traversal, and log failed cleanup without failing the database delete.
+Screenshots are selected from the configured screenshot source directory. Do not upload, copy, rename, move, capture, or delete screenshot files. Validate supported image extensions, normalize paths with .NET path APIs, reject paths outside the configured source directory, store file path references in SQLite, and show previews from that directory only.
 
 ---
 

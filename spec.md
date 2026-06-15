@@ -8,8 +8,8 @@
 
 | Tool | Description | Status |
 |---|---|---|
-| Release Plan Generator | Create, manage, and export structured software release plans | Current build phase |
-| Test Plan Generator | Create, manage, and export structured test plans with test cases and screenshots | Planned after Release Plan |
+| Release Plan Generator | Create, manage, and export structured software release plans with optional screenshot references | Current build phase |
+| Test Plan Generator | Create, manage, and export structured test plans with test cases and optional screenshot references | Planned after Release Plan |
 
 ---
 
@@ -23,8 +23,8 @@ The application should allow users to:
 4. Configure an optional external SQL Server connection string for future ticket lookup.
 5. Generate clean Markdown output from both tools.
 6. Export Markdown and PDF from both tools.
-7. Attach and display screenshots in test plans.
-8. Configure one or more base URLs for the application under test (used in the Test Plan tool).
+7. Attach and display screenshots in release plans and test plans by referencing files from a configured screenshot folder.
+8. Configure a screenshot source folder that works with Windows, macOS, and Linux path formats.
 9. Log all application events and errors using Serilog.
 
 ---
@@ -87,7 +87,7 @@ SQLite stores all application data:
 * Test plans and their child records
 * Templates (release plan and test plan templates stored separately)
 * Systems, servers, databases
-* Screenshots (stored as file paths; binary blobs optionally)
+* Screenshots (stored as file path references; binary blobs are not stored)
 * Application settings
 
 ### 3.5 External Ticket Lookup
@@ -186,6 +186,42 @@ Rules:
 * Long-form fields such as summaries, steps, notes, expected results, and actual results may preserve user-entered Markdown.
 * Collection placeholders render in `SortOrder`, then `Id`, order.
 
+### 5.6 Screenshot Source Folder and Attachments
+
+Screenshots are selected from a configured **Screenshot Source Directory**. The application does not upload, copy, rename, move, capture, or delete screenshot image files.
+
+Settings:
+
+* **Screenshot Source Directory** — a folder path accessible to the DevHelper process.
+* The path may use Windows, macOS, or Linux path formats. Use .NET path APIs; do not hard-code path separators.
+* If DevHelper is hosted on a server, this directory is on the server or a mounted share visible to the server process, not the browser client's private local filesystem.
+
+Plan screenshot fields:
+
+* Description
+* File Path (stored in SQLite as a reference to the selected file)
+* Attached At (timestamp)
+* Sort Order
+
+User workflow:
+
+1. While editing a release plan or test plan, the user chooses **Add Screenshot**.
+2. The app shows selectable image files from the configured screenshot source directory.
+3. The user selects one image file.
+4. The app shows a preview of the selected image before the attachment is saved.
+5. The user can enter or edit a description.
+6. Saving the plan stores only the screenshot metadata and file path reference.
+
+Rules:
+
+* Supported extensions: `.png`, `.jpg`, `.jpeg`, `.webp`.
+* Only files inside the configured screenshot source directory can be selected.
+* Resolve and normalize paths before saving; reject missing files, directories, unsupported extensions, and paths outside the configured source directory.
+* Prefer storing paths relative to the configured screenshot source directory. If an absolute path is stored, it must still resolve inside the configured source directory.
+* Removing a screenshot attachment removes only the database reference. It must not delete the image file.
+* Preview and PDF rendering must not serve arbitrary filesystem locations; they may only resolve screenshot files through the configured source directory.
+* If a referenced screenshot file is missing during preview, Markdown generation, or PDF generation, show a clear missing-file state and log a warning without failing the entire plan.
+
 ---
 
 ## 6. Tool 1 — Release Plan Generator
@@ -206,6 +242,7 @@ Rules:
 * Deployment Steps
 * Validation Steps
 * Rollback Steps
+* Screenshots (one or more — see section 5.6)
 * Notes
 
 ### 6.2 Ticket Fields
@@ -245,6 +282,7 @@ The release plan is generated from the selected template with the following plac
 | `{{DeploymentSteps}}` | Numbered deployment steps |
 | `{{ValidationSteps}}` | Numbered validation steps |
 | `{{RollbackSteps}}` | Numbered rollback steps |
+| `{{Screenshots}}` | Selected screenshots rendered as Markdown image references with descriptions |
 | `{{Notes}}` | Additional notes |
 
 Release plan collection rendering:
@@ -254,6 +292,7 @@ Release plan collection rendering:
 * `{{Servers}}`: bullet list formatted as `[Server Name] - [Environment] - [Server Type]`.
 * `{{Databases}}`: bullet list formatted as `[Database Name] on [SQL Server Instance]`.
 * `{{SqlScripts}}`: Markdown table with columns `Order`, `Database`, `Script Name`, `Required`, and `Description`.
+* `{{Screenshots}}`: each screenshot renders as `![Description](path/to/screenshot.png)` using the selected file path reference.
 * Step placeholders split stored text on new lines and render non-empty lines as a numbered list.
 
 ### 6.5 Default Release Plan Markdown Format
@@ -342,6 +381,12 @@ Release plan collection rendering:
 
 ---
 
+# Screenshots
+
+![Description](path/to/screenshot.png)
+
+---
+
 # Notes
 
 [Notes]
@@ -360,7 +405,7 @@ Required to save:
 
 ### 6.7 Save Behavior
 
-Saving a release plan saves the plan and all child records (tickets, SQL scripts, system/server/database links) in a single transaction.
+Saving a release plan saves the plan and all child records (tickets, SQL scripts, screenshots, system/server/database links) in a single transaction.
 
 ---
 
@@ -379,6 +424,7 @@ Saving a release plan saves the plan and all child records (tickets, SQL scripts
 * Servers (selected from shared list)
 * Databases (selected from shared list)
 * Test Cases (one or more)
+* Screenshots (one or more — see section 5.6)
 * Notes
 * Status (Draft / In Progress / Completed / Failed)
 
@@ -401,60 +447,20 @@ Same as release plan tickets:
 * Expected Result
 * Actual Result
 * Status (Not Run / Pass / Fail / Blocked / Skipped)
-* Screenshots (one or more — see section 7.5)
 * Notes
 * Sort Order
 
 Users can add, remove, and reorder test cases.
 
-### 7.4 Screenshot Configuration
+### 7.4 Test Plan Screenshots
 
-In Settings, users configure one or more **Application URLs** — the base URL(s) of the application under test.
+Test plans use the shared screenshot source folder and attachment behavior from section 5.6.
 
-Fields per URL entry:
-
-* Label (e.g., "QA Environment")
-* Base URL (e.g., `http://qa.internal/app`)
-* Active / Inactive
-
-These URLs are used to:
-
-* Provide quick-launch links within the test plan form (opens in a new browser tab so the tester can navigate and capture screenshots manually)
-* Pre-populate URL metadata in screenshot attachments
-
-### 7.5 Screenshot Attachment
-
-Each test case can have one or more screenshots attached.
-
-Screenshot fields:
-
-* Caption / Description
-* File Path (stored in SQLite; file saved to a configured screenshot output directory)
-* Captured URL (optional — the page URL where the screenshot was taken)
-* Captured At (timestamp)
-* Sort Order
-
-Users upload screenshot files through the UI. Files are saved to the configured screenshot directory on the server. The file path and metadata are stored in SQLite.
+Screenshots are plan-level attachments. Test case records do not upload, copy, or own screenshot files.
 
 Screenshots are included in the generated PDF and referenced by file path in the generated Markdown.
 
-### 7.5.1 Screenshot Upload Safety
-
-Screenshot upload handling must follow these rules:
-
-* Allowed extensions: `.png`, `.jpg`, `.jpeg`, `.webp`.
-* Maximum file size: 10 MB per screenshot.
-* Generate server-side stored file names; do not trust uploaded file names as stored file names.
-* Preserve the original file name only as optional display metadata if needed later.
-* Store screenshot paths in SQLite as paths relative to the configured screenshot output directory.
-* Reject absolute paths, `..` path segments, unsupported extensions, and empty files.
-* Ensure the resolved save path remains inside the configured screenshot output directory before writing.
-* Create the configured screenshot output directory if it does not exist.
-* When a screenshot record is deleted, delete its file if it is still inside the configured screenshot output directory.
-* If file deletion fails, keep the database operation successful and log a warning with the screenshot id and path.
-* Do not serve screenshot files from arbitrary filesystem locations.
-
-### 7.6 Markdown Generation
+### 7.5 Markdown Generation
 
 The test plan is generated from the selected template with the following placeholders:
 
@@ -471,6 +477,7 @@ The test plan is generated from the selected template with the following placeho
 | `{{Servers}}` | Servers as a bullet list |
 | `{{Databases}}` | Databases as a bullet list |
 | `{{TestCases}}` | All test cases formatted as Markdown |
+| `{{Screenshots}}` | Selected screenshots rendered as Markdown image references with descriptions |
 | `{{Notes}}` | Additional notes |
 
 Test plan collection rendering:
@@ -479,10 +486,11 @@ Test plan collection rendering:
 * `{{Systems}}`: bullet list of selected system names and free-form other system names.
 * `{{Servers}}`: bullet list formatted as `[Server Name] - [Environment] - [Server Type]`.
 * `{{Databases}}`: bullet list formatted as `[Database Name] on [SQL Server Instance]`.
-* `{{TestCases}}`: each test case renders with status, description, pre-conditions, numbered steps, expected result, actual result, screenshots, and notes when present.
+* `{{TestCases}}`: each test case renders with status, description, pre-conditions, numbered steps, expected result, actual result, and notes when present.
+* `{{Screenshots}}`: each screenshot renders as `![Description](path/to/screenshot.png)` using the selected file path reference.
 * Test case steps split stored text on new lines and render non-empty lines as a numbered list.
 
-### 7.7 Default Test Plan Markdown Format
+### 7.6 Default Test Plan Markdown Format
 
 ```markdown
 # Test Plan
@@ -551,9 +559,11 @@ Test plan collection rendering:
 
 [Actual Result]
 
-### Screenshots
+---
 
-![Caption](path/to/screenshot.png)
+# Screenshots
+
+![Description](path/to/screenshot.png)
 
 ---
 
@@ -562,7 +572,7 @@ Test plan collection rendering:
 [Notes]
 ```
 
-### 7.8 Validation Rules
+### 7.7 Validation Rules
 
 Required to save:
 
@@ -573,7 +583,7 @@ Required to save:
 * At least one test case (Test Case Name required)
 * Selected template
 
-### 7.9 Save Behavior
+### 7.8 Save Behavior
 
 Saving a test plan saves the plan and all child records (tickets, test cases, screenshots, system/server/database links) in a single transaction.
 
@@ -609,9 +619,10 @@ Sections:
 8. Deployment Steps
 9. Validation Steps
 10. Rollback Steps
-11. Notes
-12. Markdown Preview
-13. Export Actions (Save, Copy Markdown, Download .md, Download PDF)
+11. Screenshots
+12. Notes
+13. Markdown Preview
+14. Export Actions (Save, Copy Markdown, Download .md, Download PDF)
 
 ### 8.3 Create / Edit Test Plan
 
@@ -623,10 +634,11 @@ Sections:
 4. Affected Systems
 5. Servers
 6. Databases
-7. Test Cases (with inline screenshot upload per test case)
-8. Notes
-9. Markdown Preview
-10. Export Actions (Save, Copy Markdown, Download .md, Download PDF)
+7. Test Cases
+8. Screenshots
+9. Notes
+10. Markdown Preview
+11. Export Actions (Save, Copy Markdown, Download .md, Download PDF)
 
 ### 8.4 Templates Page
 
@@ -651,8 +663,7 @@ Add, edit, deactivate databases.
 Settings sections:
 
 * **External SQL Server** — optional connection string for future ticket lookup; test connection button.
-* **Application URLs** — base URLs for the application under test (used in Test Plan tool); add, edit, deactivate.
-* **Screenshot Output Directory** — local or server path where uploaded screenshots are saved.
+* **Screenshot Source Directory** — local or server path where existing screenshot images are selected from.
 * **Default Environment** — pre-selected environment on new plan forms.
 * **Logging Level** — adjustable log level.
 
@@ -866,18 +877,26 @@ Rules:
 | CreatedAt | TEXT NOT NULL |
 | UpdatedAt | TEXT NOT NULL |
 
-### 9.13 TestCaseScreenshots
+### 9.13 PlanScreenshots
 
 | Column | Type |
 |---|---|
 | Id | INTEGER PK |
-| TestCaseId | INTEGER FK (CASCADE DELETE) |
-| Caption | TEXT |
+| PlanType | TEXT NOT NULL (`ReleasePlan` or `TestPlan`) |
+| PlanId | INTEGER NOT NULL |
+| Description | TEXT |
 | FilePath | TEXT NOT NULL |
-| CapturedUrl | TEXT |
-| CapturedAt | TEXT |
+| AttachedAt | TEXT NOT NULL |
 | SortOrder | INTEGER DEFAULT 0 |
 | CreatedAt | TEXT NOT NULL |
+| UpdatedAt | TEXT NOT NULL |
+
+Rules:
+
+* `PlanType` and `PlanId` identify the owning release plan or test plan.
+* Save and delete operations must maintain screenshot rows in the same transaction as the owning plan.
+* `FilePath` must pass the configured screenshot source directory validation in section 5.6.
+* Add an index on `(PlanType, PlanId, SortOrder)`.
 
 ### 9.14 TestPlanSystems / TestPlanServers / TestPlanDatabases
 
@@ -939,7 +958,7 @@ Rules:
 | CreatedAt | TEXT NOT NULL |
 | UpdatedAt | TEXT NOT NULL |
 
-Example setting keys: `TicketLookupSqlServerConnectionString`, `ScreenshotOutputDirectory`, `DefaultEnvironment`, `LogLevel`.
+Example setting keys: `TicketLookupSqlServerConnectionString`, `ScreenshotSourceDirectory`, `DefaultEnvironment`, `LogLevel`.
 
 Sensitive settings must be encrypted before they are persisted. Use ASP.NET Core Data Protection with a stable purpose string of `DevHelper.ApplicationSettings.v1`. Store encrypted values in `SettingValue` with `IsEncrypted = 1`; non-sensitive values use `IsEncrypted = 0`.
 
@@ -948,17 +967,6 @@ Sensitive setting keys:
 * `TicketLookupSqlServerConnectionString`
 
 Never log decrypted sensitive values. Connection test logs may include success/failure, SQL Server host name if available, and exception type/message, but must not include credentials or the full connection string.
-
-### 9.16 ApplicationUrls
-
-| Column | Type |
-|---|---|
-| Id | INTEGER PK |
-| Label | TEXT NOT NULL |
-| BaseUrl | TEXT NOT NULL |
-| IsActive | INTEGER DEFAULT 1 |
-| CreatedAt | TEXT NOT NULL |
-| UpdatedAt | TEXT NOT NULL |
 
 ---
 
@@ -983,7 +991,6 @@ IServerRepository
 IDatabaseRepository
 ISqlScriptRepository
 IApplicationSettingRepository
-IApplicationUrlRepository
 ```
 
 ### Suggested Service Interfaces
@@ -994,7 +1001,6 @@ ITestPlanService
 IMarkdownGenerationService        (shared; accepts a plan type)
 IPdfGenerationService             (shared)
 IApplicationSettingsService
-IApplicationUrlService
 IScreenshotService
 IExternalSqlServerConnectionService
 IDatabaseInitializer
@@ -1057,7 +1063,7 @@ Log with Serilog at appropriate levels:
 * Release plan and test plan save / update / delete
 * Template save / update / delete
 * Markdown and PDF generation success and failure
-* Screenshot upload and save
+* Screenshot source directory validation and attachment add/remove
 * SQL Server connection test attempts and results
 * Any unhandled exceptions
 
@@ -1095,7 +1101,7 @@ DevHelper/
         ExportActions.razor
         SqlScriptEditor.razor
         TestCaseEditor.razor
-        ScreenshotUploader.razor
+        ScreenshotPicker.razor
       Layout/
     Services/
     Repositories/
@@ -1131,7 +1137,7 @@ Required coverage for Phase 1:
 Required coverage for later phases:
 
 * PDF generation has a smoke test that verifies a non-empty PDF is produced from known Markdown/HTML.
-* Screenshot service tests verify allowed extensions, file size limit, generated file names, relative path storage, path traversal rejection, and safe file deletion.
+* Screenshot service tests verify allowed extensions, configured source directory validation, relative path storage, outside-directory rejection, missing-file handling, and that removing an attachment does not delete the image file.
 * Test Plan service tests mirror Release Plan validation, transactional save, and Markdown generation coverage.
 
 ### General
@@ -1148,7 +1154,7 @@ Required coverage for later phases:
 ### Release Plan Generator
 
 * User can create, edit, and delete release plans.
-* Release plans support multiple tickets, systems, servers, databases, and SQL scripts.
+* Release plans support multiple tickets, systems, servers, databases, SQL scripts, and screenshot attachments.
 * Markdown is generated from the selected template with all placeholders resolved.
 * Markdown can be previewed, copied, downloaded, and saved to SQLite.
 * PDF can be generated and downloaded.
@@ -1158,9 +1164,9 @@ Required coverage for later phases:
 
 * User can create, edit, and delete test plans.
 * Test plans support multiple tickets, systems, servers, databases, and test cases.
-* Each test case supports multiple screenshot attachments.
-* Screenshots are saved to the configured output directory; file paths stored in SQLite.
-* Application URLs can be configured in Settings and used as quick-launch links in the test plan form.
+* Test plans support multiple screenshot attachments selected from the configured screenshot source directory.
+* Adding a screenshot shows a preview and lets the user enter a description before saving.
+* Screenshot files are not uploaded, copied, renamed, moved, or deleted by the app.
 * Markdown is generated from the selected template with all placeholders resolved.
 * Generated Markdown references screenshots by file path.
 * PDF includes embedded screenshots.
@@ -1169,8 +1175,7 @@ Required coverage for later phases:
 ### Settings
 
 * SQL Server connection string can be stored (encrypted) and tested.
-* Application URLs can be added, edited, and deactivated.
-* Screenshot output directory can be configured.
+* Screenshot source directory can be configured.
 
 ### Logging
 
@@ -1181,7 +1186,7 @@ Required coverage for later phases:
 ## 17. Future Enhancements
 
 * SQL Server ticket lookup query and result mapping.
-* In-app screenshot capture via Playwright / PuppeteerSharp from a configured application URL.
+* Optional application URL settings and in-app screenshot capture via Playwright / PuppeteerSharp.
 * Link test plans directly to release plans for traceability.
 * Test plan status tracking and sign-off workflow.
 * User authentication and role-based access.
