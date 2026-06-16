@@ -485,3 +485,10 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# DevHelper runtime artifacts
+DevHelper.Web/App_Data/
+DevHelper.Web/Logs/
+*.db
+*.db-shm
+*.db-wal

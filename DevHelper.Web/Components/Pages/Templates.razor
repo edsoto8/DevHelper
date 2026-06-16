@@ -1,0 +1,143 @@
+@page "/templates"
+@rendermode InteractiveServer
+@inject ITemplateRepository TemplateRepository
+
+<PageTitle>Templates</PageTitle>
+
+<h1>Templates</h1>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <button class="nav-link @(_toolType == nameof(ToolType.ReleasePlan) ? "active" : "")"
+                @onclick="@(() => SwitchTool(nameof(ToolType.ReleasePlan)))">Release Plan</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link @(_toolType == nameof(ToolType.TestPlan) ? "active" : "")"
+                @onclick="@(() => SwitchTool(nameof(ToolType.TestPlan)))">Test Plan</button>
+    </li>
+</ul>
+
+@if (_editing is not null)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5 class="card-title">@(_editing.Id == 0 ? "New template" : $"Edit template #{_editing.Id}")</h5>
+            <div class="mb-2">
+                <label class="form-label">Name</label>
+                <input class="form-control" @bind="_editing.Name" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Description</label>
+                <input class="form-control" @bind="_editing.Description" />
+            </div>
+            <div class="mb-2">
+                <label class="form-label">Markdown template</label>
+                <textarea class="form-control font-monospace" rows="14" @bind="_editing.MarkdownTemplate"></textarea>
+                <div class="form-text">Use <code>{{PlaceholderName}}</code> tokens (case-sensitive).</div>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@string.IsNullOrWhiteSpace(_editing.Name)">Save</button>
+                <button class="btn btn-secondary" @onclick="() => _editing = null">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <button class="btn btn-primary mb-3" @onclick="NewTemplate">New template</button>
+}
+
+<table class="table table-striped">
+    <thead>
+        <tr><th>Name</th><th>Description</th><th>Default</th><th>Active</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var template in _templates)
+        {
+            <tr>
+                <td>@template.Name</td>
+                <td>@template.Description</td>
+                <td>@(template.IsDefault ? "★" : "")</td>
+                <td>@(template.IsActive ? "Yes" : "No")</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(template)">Edit</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => DuplicateAsync(template)">Duplicate</button>
+                    @if (!template.IsDefault)
+                    {
+                        <button class="btn btn-sm btn-outline-success" @onclick="() => SetDefaultAsync(template)">Set default</button>
+                    }
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleActiveAsync(template)">
+                        @(template.IsActive ? "Deactivate" : "Activate")
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string _toolType = nameof(ToolType.ReleasePlan);
+    private List<Template> _templates = new();
+    private Template? _editing;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task SwitchTool(string toolType)
+    {
+        _toolType = toolType;
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+        => _templates = (await TemplateRepository.GetByToolTypeAsync(_toolType, includeInactive: true)).ToList();
+
+    private void NewTemplate()
+        => _editing = new Template { ToolType = _toolType, IsActive = true };
+
+    private void Edit(Template template)
+        => _editing = new Template
+        {
+            Id = template.Id, ToolType = template.ToolType, Name = template.Name,
+            Description = template.Description, MarkdownTemplate = template.MarkdownTemplate,
+            IsDefault = template.IsDefault, IsActive = template.IsActive,
+        };
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null)
+        {
+            return;
+        }
+
+        if (_editing.Id == 0)
+        {
+            await TemplateRepository.CreateAsync(_editing);
+        }
+        else
+        {
+            await TemplateRepository.UpdateAsync(_editing);
+        }
+
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task DuplicateAsync(Template template)
+    {
+        await TemplateRepository.DuplicateAsync(template.Id);
+        await LoadAsync();
+    }
+
+    private async Task SetDefaultAsync(Template template)
+    {
+        await TemplateRepository.SetDefaultAsync(template.Id, template.ToolType);
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(Template template)
+    {
+        await TemplateRepository.SetActiveAsync(template.Id, !template.IsActive);
+        await LoadAsync();
+    }
+}

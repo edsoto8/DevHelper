@@ -1,0 +1,75 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IReleasePlanService ReleasePlanService
+@inject NavigationManager Navigation
+
+<PageTitle>DevHelper</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1>Release Plans</h1>
+    <a class="btn btn-primary" href="release-plans/new">New release plan</a>
+</div>
+
+<div class="row g-2 mb-3">
+    <div class="col-md-6">
+        <input class="form-control" placeholder="Search by title..." @bind="_titleQuery" @bind:event="oninput" @bind:after="LoadAsync" />
+    </div>
+    <div class="col-md-4">
+        <select class="form-select" @bind="_environment" @bind:after="LoadAsync">
+            <option value="">All environments</option>
+            @foreach (var env in Environments.All)
+            {
+                <option value="@env">@env</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (_plans.Count == 0)
+{
+    <p class="text-muted">No release plans yet.</p>
+}
+else
+{
+    <table class="table table-hover">
+        <thead>
+            <tr><th>Title</th><th>Release date</th><th>Environment</th><th>Created by</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var plan in _plans)
+            {
+                <tr>
+                    <td>@plan.Title</td>
+                    <td>@plan.ReleaseDate</td>
+                    <td>@plan.Environment</td>
+                    <td>@plan.CreatedBy</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-outline-primary" href="release-plans/@plan.Id">Open</a>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(plan.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ReleasePlanSummary> _plans = new();
+    private string? _titleQuery;
+    private string? _environment;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _plans = (await ReleasePlanService.SearchAsync(
+            string.IsNullOrWhiteSpace(_titleQuery) ? null : _titleQuery,
+            string.IsNullOrWhiteSpace(_environment) ? null : _environment)).ToList();
+    }
+
+    private async Task DeleteAsync(long id)
+    {
+        await ReleasePlanService.DeleteAsync(id);
+        await LoadAsync();
+    }
+}

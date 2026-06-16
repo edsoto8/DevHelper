@@ -1,0 +1,131 @@
+@page "/databases"
+@rendermode InteractiveServer
+@inject IDatabaseRepository DatabaseRepository
+@inject ISystemRepository SystemRepository
+
+<PageTitle>Databases</PageTitle>
+
+<h1>Databases</h1>
+<p class="text-muted">Maintain the shared list of databases.</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">@(_editing.Id == 0 ? "Add database" : $"Edit database #{_editing.Id}")</h5>
+        <div class="row g-2">
+            <div class="col-md-4">
+                <label class="form-label">Name</label>
+                <input class="form-control" @bind="_editing.Name" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">SQL Server instance</label>
+                <input class="form-control" @bind="_editing.SqlServerInstance" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Environment</label>
+                <select class="form-select" @bind="_editing.Environment">
+                    @foreach (var env in Environments.All)
+                    {
+                        <option value="@env">@env</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Related system</label>
+                <select class="form-select" @bind="_editing.SystemEntryId">
+                    <option value="">(none)</option>
+                    @foreach (var system in _systems)
+                    {
+                        <option value="@system.Id">@system.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Notes</label>
+                <input class="form-control" @bind="_editing.Notes" />
+            </div>
+            <div class="col-12 d-flex gap-2">
+                <button class="btn btn-primary" @onclick="SaveAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(_editing.Name) || string.IsNullOrWhiteSpace(_editing.SqlServerInstance))">Save</button>
+                @if (_editing.Id != 0)
+                {
+                    <button class="btn btn-secondary" @onclick="ResetForm">Cancel</button>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<table class="table table-striped">
+    <thead>
+        <tr><th>Name</th><th>Instance</th><th>Environment</th><th>System</th><th>Active</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var db in _databases)
+        {
+            <tr>
+                <td>@db.Name</td>
+                <td>@db.SqlServerInstance</td>
+                <td>@db.Environment</td>
+                <td>@SystemName(db.SystemEntryId)</td>
+                <td>@(db.IsActive ? "Yes" : "No")</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(db)">Edit</button>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ToggleActiveAsync(db)">
+                        @(db.IsActive ? "Deactivate" : "Activate")
+                    </button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<DatabaseEntry> _databases = new();
+    private List<SystemEntry> _systems = new();
+    private DatabaseEntry _editing = NewEntry();
+
+    private static DatabaseEntry NewEntry() => new() { Environment = Environments.Development };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _systems = (await SystemRepository.GetAllAsync(includeInactive: true)).ToList();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+        => _databases = (await DatabaseRepository.GetAllAsync(includeInactive: true)).ToList();
+
+    private string SystemName(long? id)
+        => id is { } value ? _systems.FirstOrDefault(s => s.Id == value)?.Name ?? "" : "";
+
+    private void Edit(DatabaseEntry db)
+        => _editing = new DatabaseEntry
+        {
+            Id = db.Id, Name = db.Name, SqlServerInstance = db.SqlServerInstance,
+            Environment = db.Environment, SystemEntryId = db.SystemEntryId,
+            Notes = db.Notes, IsActive = db.IsActive,
+        };
+
+    private void ResetForm() => _editing = NewEntry();
+
+    private async Task SaveAsync()
+    {
+        if (_editing.Id == 0)
+        {
+            await DatabaseRepository.CreateAsync(_editing);
+        }
+        else
+        {
+            await DatabaseRepository.UpdateAsync(_editing);
+        }
+
+        ResetForm();
+        await LoadAsync();
+    }
+
+    private async Task ToggleActiveAsync(DatabaseEntry db)
+    {
+        await DatabaseRepository.SetActiveAsync(db.Id, !db.IsActive);
+        await LoadAsync();
+    }
+}

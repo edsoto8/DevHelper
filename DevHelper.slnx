@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DevHelper.Tests/DevHelper.Tests.csproj" />
+  <Project Path="DevHelper.Web/DevHelper.Web.csproj" />
+</Solution>

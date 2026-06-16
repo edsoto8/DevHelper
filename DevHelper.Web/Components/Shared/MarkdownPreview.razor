@@ -1,0 +1,43 @@
+@using Markdig
+
+<div class="border rounded">
+    <ul class="nav nav-tabs px-2 pt-2">
+        <li class="nav-item">
+            <button class="nav-link @(_showRendered ? "active" : "")" @onclick="() => _showRendered = true">Preview</button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link @(!_showRendered ? "active" : "")" @onclick="() => _showRendered = false">Markdown</button>
+        </li>
+    </ul>
+    <div class="p-3">
+        @if (string.IsNullOrEmpty(Markdown))
+        {
+            <p class="text-muted mb-0">Nothing to preview yet.</p>
+        }
+        else if (_showRendered)
+        {
+            <div>@_rendered</div>
+        }
+        else
+        {
+            <pre class="mb-0"><code>@Markdown</code></pre>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Markdown { get; set; }
+
+    private bool _showRendered = true;
+    private MarkupString _rendered;
+
+    private static readonly MarkdownPipeline Pipeline =
+        new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+
+    protected override void OnParametersSet()
+    {
+        _rendered = string.IsNullOrEmpty(Markdown)
+            ? new MarkupString(string.Empty)
+            : new MarkupString(Markdig.Markdown.ToHtml(Markdown, Pipeline));
+    }
+}

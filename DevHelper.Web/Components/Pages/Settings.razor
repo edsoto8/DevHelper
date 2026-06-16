@@ -1,0 +1,126 @@
+@page "/settings"
+@rendermode InteractiveServer
+@inject IApplicationSettingsService SettingsService
+@inject IExternalSqlServerConnectionService SqlConnection
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Settings</h1>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">External SQL Server</h5>
+        <p class="text-muted">Optional connection string for future ticket lookup. Stored encrypted at rest.</p>
+        <div class="mb-2">
+            <label class="form-label">Connection string</label>
+            <input class="form-control" type="password" @bind="_connectionString"
+                   placeholder="@(_hasConnectionString ? "•••••• (saved)" : "")" />
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-primary" @onclick="SaveConnectionStringAsync">Save</button>
+            <button class="btn btn-outline-secondary" @onclick="TestConnectionAsync">Test connection</button>
+        </div>
+        @if (_testResult is not null)
+        {
+            <div class="alert @(_testSuccess ? "alert-success" : "alert-warning") mt-3 mb-0">@_testResult</div>
+        }
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Screenshot source directory</h5>
+        <p class="text-muted">Folder the DevHelper process can read screenshots from.</p>
+        <input class="form-control mb-2" @bind="_screenshotDir" />
+        <button class="btn btn-primary" @onclick="SaveScreenshotDirAsync">Save</button>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Default environment</h5>
+        <select class="form-select mb-2" @bind="_defaultEnvironment">
+            <option value="">(none)</option>
+            @foreach (var env in Environments.All)
+            {
+                <option value="@env">@env</option>
+            }
+        </select>
+        <button class="btn btn-primary" @onclick="SaveDefaultEnvironmentAsync">Save</button>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Logging level</h5>
+        <select class="form-select mb-2" @bind="_logLevel">
+            @foreach (var level in new[] { "Verbose", "Debug", "Information", "Warning", "Error", "Fatal" })
+            {
+                <option value="@level">@level</option>
+            }
+        </select>
+        <button class="btn btn-primary" @onclick="SaveLogLevelAsync">Save</button>
+        <div class="form-text">Applied on next application restart.</div>
+    </div>
+</div>
+
+@if (_savedMessage is not null)
+{
+    <div class="alert alert-success">@_savedMessage</div>
+}
+
+@code {
+    private string? _connectionString;
+    private bool _hasConnectionString;
+    private string? _screenshotDir;
+    private string? _defaultEnvironment;
+    private string _logLevel = "Information";
+    private string? _testResult;
+    private bool _testSuccess;
+    private string? _savedMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _hasConnectionString = await SqlConnection.HasConnectionStringAsync();
+        _screenshotDir = await SettingsService.GetScreenshotSourceDirectoryAsync();
+        _defaultEnvironment = await SettingsService.GetDefaultEnvironmentAsync();
+        _logLevel = await SettingsService.GetAsync(SettingKeys.LogLevel) ?? "Information";
+    }
+
+    private async Task SaveConnectionStringAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_connectionString))
+        {
+            await SettingsService.SetAsync(SettingKeys.TicketLookupSqlServerConnectionString, _connectionString);
+            _connectionString = null;
+            _hasConnectionString = true;
+            _savedMessage = "Connection string saved (encrypted).";
+        }
+    }
+
+    private async Task TestConnectionAsync()
+    {
+        var result = await SqlConnection.TestConnectionAsync(
+            string.IsNullOrWhiteSpace(_connectionString) ? null : _connectionString);
+        _testSuccess = result.Success;
+        _testResult = result.Message;
+    }
+
+    private async Task SaveScreenshotDirAsync()
+    {
+        await SettingsService.SetAsync(SettingKeys.ScreenshotSourceDirectory, _screenshotDir);
+        _savedMessage = "Screenshot source directory saved.";
+    }
+
+    private async Task SaveDefaultEnvironmentAsync()
+    {
+        await SettingsService.SetAsync(SettingKeys.DefaultEnvironment, _defaultEnvironment);
+        _savedMessage = "Default environment saved.";
+    }
+
+    private async Task SaveLogLevelAsync()
+    {
+        await SettingsService.SetAsync(SettingKeys.LogLevel, _logLevel);
+        _savedMessage = "Logging level saved (applies on restart).";
+    }
+}

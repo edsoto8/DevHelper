@@ -1,0 +1,449 @@
+@page "/release-plans/new"
+@page "/release-plans/{Id:long}"
+@rendermode InteractiveServer
+@inject IReleasePlanService ReleasePlanService
+@inject ITemplateRepository TemplateRepository
+@inject ISystemRepository SystemRepository
+@inject IServerRepository ServerRepository
+@inject IDatabaseRepository DatabaseRepository
+@inject IApplicationSettingsService Settings
+@inject IScreenshotService ScreenshotService
+@inject IJSRuntime JS
+
+<PageTitle>@(Id is null ? "New Release Plan" : "Edit Release Plan")</PageTitle>
+
+<h1>@(Id is null ? "New Release Plan" : $"Edit Release Plan #{Id}")</h1>
+
+@if (_validationErrors.Count > 0)
+{
+    <div class="alert alert-danger">
+        <ul class="mb-0">
+            @foreach (var error in _validationErrors)
+            {
+                <li>@error</li>
+            }
+        </ul>
+    </div>
+}
+@if (_savedMessage is not null)
+{
+    <div class="alert alert-success">@_savedMessage</div>
+}
+
+<div class="row">
+    <div class="col-lg-7">
+        <!-- 1. Release Information -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Release Information</h5>
+            <div class="mb-2">
+                <label class="form-label">Title</label>
+                <input class="form-control" @bind="_plan.Title" />
+            </div>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label">Release date</label>
+                    <input class="form-control" type="date" @bind="ReleaseDateValue" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Environment</label>
+                    <select class="form-select" @bind="_plan.Environment">
+                        @foreach (var env in Environments.All)
+                        {
+                            <option value="@env">@env</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Created by</label>
+                    <input class="form-control" @bind="_plan.CreatedBy" />
+                </div>
+            </div>
+        </div></section>
+
+        <!-- 2. Template Selection -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Template</h5>
+            <select class="form-select" @bind="_plan.TemplateId">
+                <option value="">(select template)</option>
+                @foreach (var template in _templates)
+                {
+                    <option value="@template.Id">@template.Name@(template.IsDefault ? " ★" : "")</option>
+                }
+            </select>
+        </div></section>
+
+        <!-- 3. Tickets -->
+        <section class="card mb-3"><div class="card-body">
+            <div class="d-flex justify-content-between"><h5>Tickets</h5>
+                <button class="btn btn-sm btn-outline-primary" @onclick="AddTicket">Add ticket</button></div>
+            @for (var i = 0; i < _tickets.Count; i++)
+            {
+                var ticket = _tickets[i];
+                var index = i;
+                <div class="border rounded p-2 mb-2">
+                    <div class="row g-2">
+                        <div class="col-md-4"><input class="form-control" placeholder="Number *" @bind="ticket.TicketNumber" /></div>
+                        <div class="col-md-6"><input class="form-control" placeholder="Name" @bind="ticket.TicketName" /></div>
+                        <div class="col-md-2 text-end">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => MoveTicket(index, -1)">↑</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="() => MoveTicket(index, 1)">↓</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _tickets.RemoveAt(index)">✕</button>
+                        </div>
+                        <div class="col-12"><textarea class="form-control" rows="2" placeholder="Summary" @bind="ticket.TicketSummary"></textarea></div>
+                    </div>
+                </div>
+            }
+        </div></section>
+
+        <!-- 4/5/6. Systems / Servers / Databases -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Affected Systems</h5>
+            @foreach (var system in _systems)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           checked="@_selectedSystems.Contains(system.Id)"
+                           @onchange="e => ToggleSet(_selectedSystems, system.Id, e)" />
+                    <label class="form-check-label">@system.Name</label>
+                </div>
+            }
+            <div class="mt-2">
+                <label class="form-label">Other system</label>
+                <input class="form-control" @bind="_otherSystem" placeholder="Free-form system name" />
+            </div>
+        </div></section>
+
+        <section class="card mb-3"><div class="card-body">
+            <h5>Servers</h5>
+            @foreach (var server in _servers)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           checked="@_selectedServers.Contains(server.Id)"
+                           @onchange="e => ToggleSet(_selectedServers, server.Id, e)" />
+                    <label class="form-check-label">@server.Name - @server.Environment - @server.ServerType</label>
+                </div>
+            }
+        </div></section>
+
+        <section class="card mb-3"><div class="card-body">
+            <h5>Databases</h5>
+            @foreach (var db in _databases)
+            {
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox"
+                           checked="@_selectedDatabases.Contains(db.Id)"
+                           @onchange="e => ToggleSet(_selectedDatabases, db.Id, e)" />
+                    <label class="form-check-label">@db.Name on @db.SqlServerInstance</label>
+                </div>
+            }
+        </div></section>
+
+        <!-- 7. SQL Scripts -->
+        <section class="card mb-3"><div class="card-body">
+            <div class="d-flex justify-content-between"><h5>SQL Scripts</h5>
+                <button class="btn btn-sm btn-outline-primary" @onclick="AddScript">Add script</button></div>
+            @for (var i = 0; i < _scripts.Count; i++)
+            {
+                var script = _scripts[i];
+                var index = i;
+                <div class="border rounded p-2 mb-2">
+                    <div class="row g-2">
+                        <div class="col-md-2"><input class="form-control" type="number" placeholder="Order" @bind="script.ExecutionOrder" /></div>
+                        <div class="col-md-4"><input class="form-control" placeholder="Script name" @bind="script.ScriptName" /></div>
+                        <div class="col-md-4">
+                            <select class="form-select" @bind="script.DatabaseEntryId">
+                                <option value="">(database)</option>
+                                @foreach (var db in _databases)
+                                {
+                                    <option value="@db.Id">@db.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center justify-content-between">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="script.IsRequired" />
+                                <label class="form-check-label">Req</label>
+                            </div>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => _scripts.RemoveAt(index)">✕</button>
+                        </div>
+                        <div class="col-12"><input class="form-control" placeholder="Description" @bind="script.ScriptDescription" /></div>
+                    </div>
+                </div>
+            }
+        </div></section>
+
+        <!-- 8-11. Steps -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Steps</h5>
+            <p class="text-muted small">One step per line.</p>
+            <label class="form-label">Backup steps</label>
+            <textarea class="form-control mb-2" rows="3" @bind="_plan.BackupSteps"></textarea>
+            <label class="form-label">Deployment steps</label>
+            <textarea class="form-control mb-2" rows="3" @bind="_plan.DeploymentSteps"></textarea>
+            <label class="form-label">Validation steps</label>
+            <textarea class="form-control mb-2" rows="3" @bind="_plan.ValidationSteps"></textarea>
+            <label class="form-label">Rollback steps</label>
+            <textarea class="form-control" rows="3" @bind="_plan.RollbackSteps"></textarea>
+        </div></section>
+
+        <!-- 12. Screenshots -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Screenshots</h5>
+            @if (_screenshotSourceConfigured)
+            {
+                <div class="input-group mb-2">
+                    <select class="form-select" @bind="_selectedScreenshotPath">
+                        <option value="">(select image)</option>
+                        @foreach (var file in _availableScreenshots)
+                        {
+                            <option value="@file.RelativePath">@file.RelativePath</option>
+                        }
+                    </select>
+                    <input class="form-control" placeholder="Description" @bind="_newScreenshotDescription" />
+                    <button class="btn btn-outline-primary" @onclick="AddScreenshotAsync"
+                            disabled="@string.IsNullOrEmpty(_selectedScreenshotPath)">Add</button>
+                </div>
+                @if (_screenshotError is not null)
+                {
+                    <div class="alert alert-warning py-1">@_screenshotError</div>
+                }
+                @foreach (var shot in _screenshots)
+                {
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <img src="/screenshots/preview?path=@Uri.EscapeDataString(shot.FilePath)" style="max-height:60px" alt="" />
+                        <span class="flex-grow-1">@shot.FilePath @(string.IsNullOrEmpty(shot.Description) ? "" : $"— {shot.Description}")</span>
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => _screenshots.Remove(shot)">Remove</button>
+                    </div>
+                }
+            }
+            else
+            {
+                <p class="text-muted mb-0">Configure a screenshot source directory in <a href="settings">Settings</a> to attach screenshots.</p>
+            }
+        </div></section>
+
+        <!-- 13. Notes -->
+        <section class="card mb-3"><div class="card-body">
+            <h5>Notes</h5>
+            <textarea class="form-control" rows="3" @bind="_plan.Notes"></textarea>
+        </div></section>
+    </div>
+
+    <!-- 14/15. Preview + Export -->
+    <div class="col-lg-5">
+        <div class="sticky-top pt-2">
+            <div class="d-flex gap-2 mb-2 flex-wrap">
+                <button class="btn btn-success" @onclick="SaveAsync">Save</button>
+                <button class="btn btn-outline-secondary" @onclick="RefreshPreviewAsync">Refresh preview</button>
+                <button class="btn btn-outline-secondary" @onclick="CopyMarkdownAsync" disabled="@string.IsNullOrEmpty(_markdown)">Copy</button>
+                <button class="btn btn-outline-secondary" @onclick="DownloadMarkdownAsync" disabled="@string.IsNullOrEmpty(_markdown)">Download .md</button>
+            </div>
+            <MarkdownPreview Markdown="_markdown" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public long? Id { get; set; }
+
+    private ReleasePlan _plan = new() { Environment = Environments.Development };
+
+    private DateOnly? ReleaseDateValue
+    {
+        get => DateOnly.TryParse(_plan.ReleaseDate, out var date) ? date : null;
+        set => _plan.ReleaseDate = value?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+    private List<Template> _templates = new();
+    private List<SystemEntry> _systems = new();
+    private List<ServerEntry> _servers = new();
+    private List<DatabaseEntry> _databases = new();
+
+    private readonly List<ReleasePlanTicket> _tickets = new();
+    private readonly List<SqlScript> _scripts = new();
+    private readonly HashSet<long> _selectedSystems = new();
+    private readonly HashSet<long> _selectedServers = new();
+    private readonly HashSet<long> _selectedDatabases = new();
+    private readonly List<PlanScreenshot> _screenshots = new();
+    private string? _otherSystem;
+
+    private bool _screenshotSourceConfigured;
+    private List<ScreenshotFile> _availableScreenshots = new();
+    private string? _selectedScreenshotPath;
+    private string? _newScreenshotDescription;
+    private string? _screenshotError;
+
+    private string? _markdown;
+    private List<string> _validationErrors = new();
+    private string? _savedMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _templates = (await TemplateRepository.GetByToolTypeAsync(nameof(ToolType.ReleasePlan))).ToList();
+        _systems = (await SystemRepository.GetAllAsync()).ToList();
+        _servers = (await ServerRepository.GetAllAsync()).ToList();
+        _databases = (await DatabaseRepository.GetAllAsync()).ToList();
+
+        var sourceDir = await ScreenshotService.GetSourceDirectoryAsync();
+        _screenshotSourceConfigured = sourceDir is not null;
+        if (_screenshotSourceConfigured)
+        {
+            _availableScreenshots = (await ScreenshotService.ListAvailableAsync()).ToList();
+        }
+
+        if (Id is { } id)
+        {
+            await LoadExistingAsync(id);
+        }
+        else
+        {
+            _plan.Environment = await Settings.GetDefaultEnvironmentAsync() ?? Environments.Development;
+            _plan.TemplateId = _templates.FirstOrDefault(t => t.IsDefault)?.Id;
+            AddTicket();
+        }
+    }
+
+    private async Task LoadExistingAsync(long id)
+    {
+        var aggregate = await ReleasePlanService.GetAggregateAsync(id);
+        if (aggregate is null)
+        {
+            return;
+        }
+
+        _plan = aggregate.Plan;
+        _tickets.AddRange(aggregate.Tickets.OrderBy(t => t.SortOrder));
+        _scripts.AddRange(aggregate.SqlScripts.OrderBy(s => s.ExecutionOrder));
+        foreach (var s in aggregate.Systems)
+        {
+            if (s.SystemEntryId is { } sid) _selectedSystems.Add(sid);
+            else if (!string.IsNullOrWhiteSpace(s.OtherSystemName)) _otherSystem = s.OtherSystemName;
+        }
+        foreach (var s in aggregate.Servers) _selectedServers.Add(s.ServerEntryId);
+        foreach (var d in aggregate.Databases) _selectedDatabases.Add(d.DatabaseEntryId);
+        _screenshots.AddRange(aggregate.Screenshots.OrderBy(s => s.SortOrder));
+        _markdown = _plan.MarkdownOutput;
+    }
+
+    private void AddTicket() => _tickets.Add(new ReleasePlanTicket());
+    private void AddScript() => _scripts.Add(new SqlScript { ExecutionOrder = _scripts.Count + 1, IsRequired = true });
+
+    private void MoveTicket(int index, int delta)
+    {
+        var target = index + delta;
+        if (target < 0 || target >= _tickets.Count) return;
+        (_tickets[index], _tickets[target]) = (_tickets[target], _tickets[index]);
+    }
+
+    private void ToggleSet(HashSet<long> set, long id, ChangeEventArgs e)
+    {
+        if (e.Value is true) set.Add(id);
+        else set.Remove(id);
+    }
+
+    private async Task AddScreenshotAsync()
+    {
+        _screenshotError = null;
+        if (string.IsNullOrEmpty(_selectedScreenshotPath)) return;
+
+        var result = await ScreenshotService.ValidateForStorageAsync(_selectedScreenshotPath);
+        if (!result.IsValid)
+        {
+            _screenshotError = result.Error;
+            return;
+        }
+
+        _screenshots.Add(new PlanScreenshot
+        {
+            FilePath = result.RelativePath!,
+            Description = _newScreenshotDescription,
+            SortOrder = _screenshots.Count,
+            AttachedAt = DateTime.UtcNow.ToString("O"),
+        });
+        _selectedScreenshotPath = null;
+        _newScreenshotDescription = null;
+    }
+
+    private ReleasePlanAggregate BuildAggregate()
+    {
+        var aggregate = new ReleasePlanAggregate { Plan = _plan };
+
+        for (var i = 0; i < _tickets.Count; i++) _tickets[i].SortOrder = i;
+        aggregate.Tickets.AddRange(_tickets.Where(t => !string.IsNullOrWhiteSpace(t.TicketNumber) || !string.IsNullOrWhiteSpace(t.TicketName)));
+        aggregate.SqlScripts.AddRange(_scripts.Where(s => !string.IsNullOrWhiteSpace(s.ScriptName)));
+
+        var order = 0;
+        foreach (var id in _selectedSystems)
+            aggregate.Systems.Add(new ReleasePlanSystemLink { SystemEntryId = id, SortOrder = order++ });
+        if (!string.IsNullOrWhiteSpace(_otherSystem))
+            aggregate.Systems.Add(new ReleasePlanSystemLink { OtherSystemName = _otherSystem, SortOrder = order++ });
+
+        order = 0;
+        foreach (var id in _selectedServers)
+            aggregate.Servers.Add(new ReleasePlanServerLink { ServerEntryId = id, SortOrder = order++ });
+        order = 0;
+        foreach (var id in _selectedDatabases)
+            aggregate.Databases.Add(new ReleasePlanDatabaseLink { DatabaseEntryId = id, SortOrder = order++ });
+
+        for (var i = 0; i < _screenshots.Count; i++) _screenshots[i].SortOrder = i;
+        aggregate.Screenshots.AddRange(_screenshots);
+        return aggregate;
+    }
+
+    private async Task RefreshPreviewAsync()
+    {
+        _savedMessage = null;
+        try
+        {
+            _markdown = await ReleasePlanService.GenerateMarkdownAsync(BuildAggregate());
+        }
+        catch (Exception ex)
+        {
+            _markdown = $"_Preview unavailable: {ex.Message}_";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _savedMessage = null;
+        _validationErrors.Clear();
+        var aggregate = BuildAggregate();
+        var (saved, id, validation) = await ReleasePlanService.SaveAsync(aggregate);
+        if (!saved)
+        {
+            _validationErrors = validation.Errors;
+            return;
+        }
+
+        Id = id;
+        _markdown = aggregate.Plan.MarkdownOutput;
+        _savedMessage = "Release plan saved.";
+    }
+
+    private async Task CopyMarkdownAsync()
+    {
+        if (!string.IsNullOrEmpty(_markdown))
+        {
+            await JS.InvokeVoidAsync("devhelper.copyToClipboard", _markdown);
+        }
+    }
+
+    private async Task DownloadMarkdownAsync()
+    {
+        if (string.IsNullOrEmpty(_markdown)) return;
+        await JS.InvokeVoidAsync("devhelper.downloadText", BuildFileName("md"), _markdown, "text/markdown");
+    }
+
+    private string BuildFileName(string extension)
+    {
+        var date = MarkdownRenderHelpers.FormatFileDate(_plan.ReleaseDate);
+        var tickets = string.Join("-", _tickets
+            .Where(t => !string.IsNullOrWhiteSpace(t.TicketNumber))
+            .Select(t => t.TicketNumber.Trim()));
+        var parts = new[] { "ReleasePlan", _plan.Environment, date, tickets }
+            .Where(p => !string.IsNullOrWhiteSpace(p));
+        var name = string.Join("_", parts);
+        foreach (var c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '-');
+        return $"{name}.{extension}";
+    }
+}
